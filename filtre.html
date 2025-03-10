@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Vanilla JS Example</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.fluid.classless.min.css">
+  <style>
+    .controls {
+      margin: 1em 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1em;
+      align-items: flex-end;
+    }
+    .controls > div {
+      flex: 1;
+      min-width: 180px;
+    }
+    table {
+      margin-top: 1em;
+    }
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Vanilla JS Example</h1>
+    <hr>
+    <button id="fetch-users">Fetch Users</button>
+  </div>
+  <section class="controls">
+    <div>
+      <label for="name-search">Search by Name:</label>
+      <input type="text" id="name-search" placeholder="Enter first/last name">
+    </div>
+    <div>
+      <label for="age-bas">Age From:</label>
+      <input type="number" id="age-bas" placeholder="Min Age">
+    </div>
+    <div>
+      <label for="age-haut">Age To:</label>
+      <input type="number" id="age-haut" placeholder="Max Age">
+    </div>
+    <div>
+      <label for="gender-select">Gender:</label>
+      <select id="gender-select">
+        <option value="all">All</option>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+    </div>
+    <div>
+      <label for="age-sort">Sort by Age:</label>
+      <select id="age-sort">
+        <option value="none">None</option>
+        <option value="asc">Ascending</option>
+        <option value="desc">Descending</option>
+      </select>
+    </div>
+  </section>
+  <div class="message">You can click on fetch to get users</div>
+  <table id="tbl-users" style="display: none;">
+    number of users: <span id="number-of-users"></span>
+    <thead>
+      <tr>
+        <th>Picture</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Tel</th>
+        <th>Age</th>
+        <th>Gender</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<script>
+  let users = [];
+
+  // Normalise une chaîne (supprime accents, les accents et autres signes qui ont été séparés grâce à la décomposition NFD sont supprimés, apostrophes et convertit en minuscules)
+  function normalizeString(str) {
+    return str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/'/g, "")
+      .toLowerCase();
+  }
+
+  // Lors du chargement des utilisateurs, on pré-calcule les tokens du nom complet
+  function preprocessUsers(data) {
+    return data.map(user => {
+      const firstNameTokens = normalizeString(user.name.first).split(/\s+/);
+      const lastNameTokens  = normalizeString(user.name.last).split(/\s+/);
+      // stocke les tokens dans une nouvelle propriété pour éviter de refaire le découpage à chaque filtrage
+      user.fullNameTokens = firstNameTokens.concat(lastNameTokens);
+      return user;
+    });
+  }
+
+  // Affiche les utilisateurs dans le tableau HTML
+  function displayUsers(filteredUsers) {
+    const tbody = document.querySelector('#tbl-users tbody');
+    const table = document.querySelector('#tbl-users');
+    document.querySelector('#tbl-users').style.display = 'block';
+    document.querySelector('div.message').style.display = 'none';
+    const numberofUsersText = document.getElementById('number-of-users');
+    numberofUsersText.textContent = `${filteredUsers.length}/${users.length}`;
+    
+  
+  if (filteredUsers.length === 0) {
+    table.style.display = 'table';
+    tbody.innerHTML = `<tr id="no-results-message">
+        <td colspan="6">no user found</td>
+      </tr>`;
+  } else {
+    table.style.display = 'table';
+    tbody.innerHTML = filteredUsers.map(user => `
+      <tr>
+        <td><img src="${user.picture.thumbnail}" alt="${user.name.first} Photo"></td>
+        <td>${user.name.first} ${user.name.last}</td>
+        <td>${user.email}</td>
+        <td>${user.phone}</td>
+        <td>${user.dob.age}</td>
+        <td class="${user.gender === 'male' ? 'male' : 'female'}">${user.gender}</td>
+      </tr>
+    `).join('');
+    }}
+
+  // Récupère 20 utilisateurs depuis l'API RandomUser
+  async function fetchUsers() {
+    try {
+        const response = await fetch('https://randomuser.me/api/?results=20');
+        const data = await response.json();
+      
+      // Pré-calcul des tokens pour chaque utilisateur
+      users = preprocessUsers([...users, ...data.results]);
+      applyFilters();
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  }
+
+  // Filtre par nom/prénom à partir des premières lettres en utilisant les tokens pré-calculés
+  function filterByName(arr, searchTerm) {
+    const normalizedSearch = normalizeString(searchTerm.trim());
+    if (normalizedSearch === '') return arr;
+    const searchTokens = normalizedSearch.split(/\s+/);
+
+    return arr.filter(user => {
+      // evry permet de retourner true si tous les éléments sont true.
+      return searchTokens.every(token =>
+        // some permet de retourner true si au moins un élément est true.
+        user.fullNameTokens.some(nameToken => nameToken.startsWith(token))
+      );
+    });
+  }
+
+  // Filtrage par tranche d'âge
+  function filterByAge(arr, ageFrom, ageTo) {
+    return arr.filter(user => {
+      const age = user.dob.age;
+      if (ageFrom !== "" && age < parseInt(ageFrom)) return false;
+      if (ageTo !== "" && age > parseInt(ageTo)) return false;
+      return true;
+    });
+  }
+
+  // Filtrage par genre (all, male, female)
+  function filterByGender(arr, gender) {
+    if (gender === "all") return arr;
+    return arr.filter(user => user.gender === gender);
+  }
+
+  // Tri par âge (ascendant, descendant ou aucun)
+  function sortByAge(arr, order) {
+    const sorted = arr.slice();
+    if (order === "asc") {
+      return sorted.sort((a, b) => a.dob.age - b.dob.age);
+    } else if (order === "desc") {
+      return sorted.sort((a, b) => b.dob.age - a.dob.age);
+    }
+    return arr;
+  }
+
+  // Applique l'ensemble des filtres et du tri sur la liste des utilisateurs
+  function applyFilters() {
+    const nameSearch = document.getElementById("name-search").value;
+    const ageFrom = document.getElementById("age-bas").value;
+    const ageTo = document.getElementById("age-haut").value;
+    const gender = document.getElementById("gender-select").value;
+    const ageSort = document.getElementById("age-sort").value;
+
+    let result = filterByName(users, nameSearch);
+    result = filterByAge(result, ageFrom, ageTo);
+    result = filterByGender(result, gender);
+    result = sortByAge(result, ageSort);
+    
+
+    displayUsers(result);
+  }
+
+  // Événements
+  document.getElementById('fetch-users').addEventListener('click', fetchUsers);
+  document.getElementById('name-search').addEventListener('input', applyFilters);
+  document.getElementById('age-bas').addEventListener('input', applyFilters);
+  document.getElementById('age-haut').addEventListener('input', applyFilters);
+  document.getElementById('gender-select').addEventListener('change', applyFilters);
+  document.getElementById('age-sort').addEventListener('change', applyFilters);
+</script>
+</body>
+</html>
